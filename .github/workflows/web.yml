@@ -1,0 +1,111 @@
+name: Web
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'resources/**'
+      - '.github/workflows/web.yml'
+    
+permissions:
+  contents: read
+
+jobs:
+  build-web:
+    permissions:
+      contents: write       # for actions/upload-release-asset to upload release asset
+    runs-on: ubuntu-latest
+    
+    env:
+      BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }} # Needs to be added through github
+      PROJECT_NAME: smart-vs-casual
+      PROJECT_BUILD_PATH: build
+      PROJECT_RELEASE_PATH: ${{ github.event.repository.name }}_web
+      PROJECT_CUSTOM_FLAGS: ""
+      PROJECT_RESOURCES_PATH: resources
+
+    steps:
+      - name: Checkout Project
+        uses: actions/checkout@v4.2.1
+
+      - name: Cache build/_deps
+        uses: actions/cache@v3
+        with:
+          path: ${{github.workspace}}/build/_deps
+          key: ${{ matrix.os }}-build-deps
+          restore-keys: ${{ matrix.os }}-build-deps
+
+      - name: Setup Environment
+        run: | 
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends python3 libglfw3 libglfw3-dev libx11-dev libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev libxext-dev libxfixes-dev libwayland-dev libxkbcommon-dev libcjson-dev cmake
+        shell: bash
+  
+      - name: Cache emsdk
+        uses: actions/cache@v4
+        with:
+          path: emsdk-cache
+          key: emsdk-3.1.71-${{ runner.os }}
+
+      - name: Setup emsdk
+        run: |
+          # Only clone and install if the cache wasn't found
+          if [ ! -d "emsdk-cache" ]; then
+            git clone https://github.com/emscripten-core/emsdk.git emsdk-cache
+            cd emsdk-cache
+            ./emsdk install 3.1.71
+          else
+            cd emsdk-cache
+          fi
+          
+          # Activate the specific version
+          ./emsdk activate 3.1.71
+          
+          # Expose the Emscripten binaries to the GitHub Actions PATH for later steps
+          echo "$PWD" >> $GITHUB_PATH
+          echo "$PWD/upstream/emscripten" >> $GITHUB_PATH
+
+      # Build emscripten project using a raylibshell html file
+      - name: Configure Project
+        run: |
+          mkdir -p ${{ env.PROJECT_BUILD_PATH }} && cd ${{ env.PROJECT_BUILD_PATH }} && emcmake cmake .. -DPLATFORM=Web -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXECUTABLE_SUFFIX=".html" -DPROJECT_RESOURCES_PATH=${{ env.PROJECT_RESOURCES_PATH }}
+          
+      - name: Build Project
+        run: |
+          cd ${{ env.PROJECT_BUILD_PATH }} && emmake make BUILD_MODE=RELEASE PROJECT_CUSTOM_FLAGS=${{ env.PROJECT_CUSTOM_FLAGS }}
+          ls ${{ env.PROJECT_NAME }}
+          cp ${{ env.PROJECT_NAME }}/${{env.PROJECT_NAME}}.html ${{ env.PROJECT_NAME }}/index.html
+      
+      - name: Generate Artifacts
+        run: |
+          # ls ${{ env.PROJECT_BUILD_PATH }}
+          mv ${{ env.PROJECT_BUILD_PATH }}/${{ env.PROJECT_NAME }} ${{ env.PROJECT_RELEASE_PATH }}
+          cp README.md ${{ env.PROJECT_RELEASE_PATH }}
+          cp LICENSE ${{ env.PROJECT_RELEASE_PATH }}
+          ls ${{ env.PROJECT_RELEASE_PATH }}
+          7z a ./${{ env.PROJECT_RELEASE_PATH }}.zip ./${{ env.PROJECT_RELEASE_PATH }}
+      
+      # Removing because I do not have money
+      # - name: Upload Artifacts
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: ${{ env.PROJECT_RELEASE_PATH }}
+      #     path: |
+      #       ./${{ env.PROJECT_RELEASE_PATH }}
+      #       !./${{ env.PROJECT_RELEASE_PATH }}.zip
+
+      - name: Download + Authorize Butler
+        run: |
+            curl -L -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
+            unzip butler.zip
+            chmod +x butler
+            ./butler -V
+
+      - name: Login To Butler
+        run: ./butler login
+
+      - name: Push Web to Itch
+        run: ./butler push ${{ env.PROJECT_RELEASE_PATH }} maiconspas/smart-vs-casual:web

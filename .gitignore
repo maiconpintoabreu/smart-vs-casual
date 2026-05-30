@@ -57,5 +57,7 @@ dkms.conf
 /build/
 
 # Android
+/.gradle/
+/.idea/
 /app/.cxx/
-/app/build/
+/app/build

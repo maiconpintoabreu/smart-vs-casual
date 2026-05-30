@@ -1,0 +1,74 @@
+name: Android
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'app/**'
+      - 'resources/**'
+      - '.github/workflows/android.yml'
+
+jobs:
+  build:
+    env:
+      BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }} # Needs to be added through github
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+        with:
+          submodules: true
+
+      - name: Cache build/_deps
+        uses: actions/cache@v3
+        with:
+          path: ${{github.workspace}}/build/_deps
+          key: ${{ matrix.os }}-build-deps
+          restore-keys: ${{ matrix.os }}-build-deps
+
+      - name: Cache .gradle
+        uses: actions/cache@v3
+        with:
+          path: ${{github.workspace}}/.gradle
+          key: ${{ matrix.os }}-gradle
+          restore-keys: ${{ matrix.os }}-gradle
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Set up CMake
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: '3.30.3'
+
+      - name: Build project
+        run: |
+          chmod +x ./gradlew
+          ./gradlew build
+
+      # Removing because I do not have money
+      # - name: Upload debug APKs
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: debug-apks
+      #     path: ./app/build/outputs/apk/debug/*.apk
+    
+      - name: Download + Authorize Butler
+        run: |
+            curl -L -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
+            unzip butler.zip
+            chmod +x butler
+            ./butler -V
+
+      - name: Login To Butler
+        run: ./butler login
+
+      - name: Push Web to Itch
+        run: ./butler push ./app/build/outputs/apk/debug/*.apk maiconspas/smart-vs-casual:android
