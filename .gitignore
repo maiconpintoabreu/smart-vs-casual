@@ -53,3 +53,9 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+/build/
+
+# Android
+/app/.cxx/
+/app/build/
