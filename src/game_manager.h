@@ -12,6 +12,8 @@
 #define MAX_MAGES 1000
 #define MAX_DEFENCE_SLOTS 11
 #define DEFAULT_MAGE_CD 1
+int screenWidth = SCREEN_WIDTH;
+int screenHeight = SCREEN_HEIGHT;
 
 // Structs
 typedef struct Mage
@@ -59,7 +61,14 @@ void LoadDefenceSlots(void)
 
 bool Init(void)
 {
-    InitWindow(0, 0, "Smart vs Casual");
+
+#if !defined(PLATFORM_WEB)
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_FULLSCREEN_MODE);
+#else
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+#endif
+
+    InitWindow(screenWidth, screenHeight, "Smart vs Casual");
 
     level = LoadTexture("resources/levelnew.png");
 
