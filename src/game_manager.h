@@ -15,8 +15,10 @@
 #define MAX_DEFENCE_SLOTS 11
 #define DEFAULT_MAGE_CD 1
 #define DEFAULT_MAGE_ATTACK_CD 1
+#define DEFAULT_MAGE_ANIMATION_CD 0.4f
 #define DEFAULT_REGEN 0.1f
 #define DEFAULT_ATTACK_CD 1
+#define DEFAULT_ATTACK_DURATION 0.4f
 
 // Enums
 
@@ -34,27 +36,34 @@ typedef enum LaneType
 typedef struct Mage
 {
     Vector2 position;
-    Texture2D texture;
     LaneType lane;
     int lineProgress;
-    float health;
     int level;
     int hitboxSize;
+    int animationIndex;
+    float health;
     float damage;
     float attackCD;
+    float animationCD;
     bool isBoss;
 } Mage;
 
 typedef struct DefenceSlot
 {
     Vector2 position;
-    Texture2D texture;
     Mage *target;
     float damage;
     float attackCD;
     int hitscanSize;
     bool isAlive;
 } DefenceSlot;
+
+typedef struct Bullet
+{
+    Vector2 from;
+    Vector2 hit;
+    float duration;
+} Bullet;
 
 // PreRender Variables
 RenderTexture target = {0};
@@ -65,10 +74,15 @@ static Rectangle destinationRec = {0};
 Texture2D level = {0};
 
 // Global Variables
-Vector2 virtualMouse = { 0 };
+Vector2 virtualMouse = {0};
 Mage mages[MAX_MAGES] = {0};
 DefenceSlot defenceSlots[MAX_DEFENCE_SLOTS] = {0};
+Bullet bullets[MAX_DEFENCE_SLOTS*2] = {0};
+Texture2D assetTexture = {0};
+Music backgroundMusic = {0};
+Sound hitSFX = {0};
 int mageAmount = 0;
+int bulletAmount = 0;
 int totalMageSpawned = 0;
 int mainLevel = 1;
 int coins = 100;
@@ -88,17 +102,17 @@ const float initBottomLine[] = {178, 188};
 
 void LoadDefenceSlots(void)
 {
-    defenceSlots[0] = (DefenceSlot){(Vector2){102, 93}, {0}, NULL, 1, DEFAULT_ATTACK_CD, 50, true};
-    defenceSlots[1] = (DefenceSlot){(Vector2){104, 115}, {0}, NULL, 1, DEFAULT_ATTACK_CD, 56, true};
-    defenceSlots[2] = (DefenceSlot){(Vector2){136, 87}, {0}, NULL, 1, DEFAULT_ATTACK_CD, 56, false};
-    defenceSlots[3] = (DefenceSlot){(Vector2){136, 129}, {0}, NULL, 1, DEFAULT_ATTACK_CD, 56, false};
-    defenceSlots[4] = (DefenceSlot){(Vector2){195, 86}, {0}, NULL, 1, DEFAULT_ATTACK_CD, 56, false};
-    defenceSlots[5] = (DefenceSlot){(Vector2){225, 153}, {0}, NULL, 1, DEFAULT_ATTACK_CD, 56, false};
-    defenceSlots[6] = (DefenceSlot){(Vector2){253, 89}, {0}, NULL, 1, DEFAULT_ATTACK_CD, 56, false};
-    defenceSlots[7] = (DefenceSlot){(Vector2){291, 215}, {0}, NULL, 1, DEFAULT_ATTACK_CD, 56, false};
-    defenceSlots[8] = (DefenceSlot){(Vector2){370, 45}, {0}, NULL, 1, DEFAULT_ATTACK_CD, 56, false};
-    defenceSlots[9] = (DefenceSlot){(Vector2){388, 139}, {0}, NULL, 1, DEFAULT_ATTACK_CD, 56, false};
-    defenceSlots[10] = (DefenceSlot){(Vector2){385,211}, {0}, NULL, 1, DEFAULT_ATTACK_CD, 56, false};
+    defenceSlots[0] = (DefenceSlot){(Vector2){102, 93}, NULL, 1, DEFAULT_ATTACK_CD, 50, true};
+    defenceSlots[1] = (DefenceSlot){(Vector2){104, 115}, NULL, 1, DEFAULT_ATTACK_CD, 56, true};
+    defenceSlots[2] = (DefenceSlot){(Vector2){136, 87}, NULL, 1, DEFAULT_ATTACK_CD, 56, false};
+    defenceSlots[3] = (DefenceSlot){(Vector2){136, 129}, NULL, 1, DEFAULT_ATTACK_CD, 56, false};
+    defenceSlots[4] = (DefenceSlot){(Vector2){195, 86}, NULL, 1, DEFAULT_ATTACK_CD, 56, false};
+    defenceSlots[5] = (DefenceSlot){(Vector2){225, 153}, NULL, 1, DEFAULT_ATTACK_CD, 56, false};
+    defenceSlots[6] = (DefenceSlot){(Vector2){253, 89}, NULL, 1, DEFAULT_ATTACK_CD, 56, false};
+    defenceSlots[7] = (DefenceSlot){(Vector2){291, 215}, NULL, 1, DEFAULT_ATTACK_CD, 56, false};
+    defenceSlots[8] = (DefenceSlot){(Vector2){370, 45}, NULL, 1, DEFAULT_ATTACK_CD, 56, false};
+    defenceSlots[9] = (DefenceSlot){(Vector2){388, 139}, NULL, 1, DEFAULT_ATTACK_CD, 56, false};
+    defenceSlots[10] = (DefenceSlot){(Vector2){385,211}, NULL, 1, DEFAULT_ATTACK_CD, 56, false};
 }
 
 void ToogleDefenceSlot(Vector2 point)
@@ -133,6 +147,7 @@ bool Init(void)
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Smart vs Casual");
 
     level = LoadTexture("resources/levelnew.png");
+    assetTexture = LoadTexture("resources/assets.png");
 
     target = LoadRenderTexture(SCREEN_WIDTH, SCREEN_HEIGHT);
     sourceRec = (Rectangle){ 0.0f, 0.0f, (float)target.texture.width, -(float)target.texture.height };
@@ -143,6 +158,9 @@ bool Init(void)
 
     // Set defenceSlots
     LoadDefenceSlots();
+    InitAudioDevice();
+    backgroundMusic = LoadMusicStream("resources/backgroundMusic.wav");
+    hitSFX = LoadSound("resources/hit.wav");
     return true;
 }
 
@@ -150,6 +168,8 @@ bool UpdateDrawFrame(void)
 {
     float deltaTime = GetFrameTime();
     if (deltaTime > 1.0f) deltaTime = 0.0f;
+
+    playerHealth = Clamp(playerHealth+DEFAULT_REGEN*deltaTime, 0.0f, 50.0f);
 
     const float scale = MIN((float)GetScreenWidth()/SCREEN_WIDTH, (float)GetScreenHeight()/SCREEN_HEIGHT);
 
@@ -174,6 +194,11 @@ bool UpdateDrawFrame(void)
             ToogleDefenceSlot(virtualMouse);
         }
         mageCD -= deltaTime;
+        if (IsAudioDeviceReady())
+        {
+            if (IsMusicValid(backgroundMusic) && !IsMusicStreamPlaying(backgroundMusic)) PlayMusicStream(backgroundMusic);
+            if (IsMusicValid(backgroundMusic)) UpdateMusicStream(backgroundMusic);
+        }
         
         if (mageCD <= 0.0f)
         {
@@ -199,14 +224,15 @@ bool UpdateDrawFrame(void)
                 }
                 mages[mageAmount++] = (Mage){
                     position, 
-                    {0},
                     laneToSpawn,
                     0,
-                    10*mainLevel, 
                     mainLevel, 
                     5,
+                    0,
                     10,
+                    10*mainLevel, 
                     DEFAULT_MAGE_ATTACK_CD,
+                    DEFAULT_MAGE_ANIMATION_CD,
                     false
                 };
             }
@@ -215,14 +241,15 @@ bool UpdateDrawFrame(void)
                 spawnBossFrame = false;
                 mages[mageAmount++] = (Mage){
                     (Vector2){SCREEN_WIDTH, initMidLine[0]+(initMidLine[1]-initMidLine[0])*0.5f}, 
-                    {0},
                     LaneMid,
                     0,
-                    40*mainLevel, 
                     mainLevel+5, 
                     10,
+                    0,
+                    40*mainLevel, 
                     10,
                     DEFAULT_MAGE_ATTACK_CD,
+                    DEFAULT_MAGE_ANIMATION_CD,
                     true
                 };
             }
@@ -251,6 +278,15 @@ bool UpdateDrawFrame(void)
         }
 
         // Attack Targets
+        for (int i=bulletAmount-1;i>=0;i--)
+        {
+            bullets[i].duration -= deltaTime;
+            if (bullets[i].duration)
+            {
+                bulletAmount--;
+                bullets[i] = bullets[bulletAmount];
+            }
+        }
         for (int i=0;i<MAX_DEFENCE_SLOTS;i++)
         {
             if (defenceSlots[i].isAlive)
@@ -260,6 +296,9 @@ bool UpdateDrawFrame(void)
                     if (defenceSlots[i].target != NULL)
                     {
                         defenceSlots[i].target->health -= defenceSlots[i].damage;
+                        bullets[bulletAmount] = (Bullet){defenceSlots[i].position, defenceSlots[i].target->position, DEFAULT_ATTACK_DURATION};
+                        bulletAmount++;
+                        PlaySound(hitSFX);
                         if (defenceSlots[i].target->health <= 0.0f)
                         {
                             defenceSlots[i].target = NULL;
@@ -270,6 +309,17 @@ bool UpdateDrawFrame(void)
                 else
                 {
                     defenceSlots[i].attackCD -= deltaTime;
+
+                    if (defenceSlots[i].target != NULL)
+                    {
+                        if (defenceSlots[i].target->health <= 0.0f)
+                        {
+                            defenceSlots[i].target = NULL;
+                        } else if (!CheckCollisionCircles(defenceSlots[i].position, (float)defenceSlots[i].hitscanSize, defenceSlots[i].target->position, (float)defenceSlots[i].target->hitboxSize))
+                        {
+                            defenceSlots[i].target = NULL;
+                        }
+                    }
                 }
             }
         }
@@ -278,9 +328,19 @@ bool UpdateDrawFrame(void)
             if (mages[i].health <= 0.0f)
             {
                 coins += 2*mages[i].level;
-                mages[i] = mages[mageAmount-1];
                 mageAmount--;
+                mages[i] = mages[mageAmount];
                 continue;
+            }
+            if (mages[i].animationCD <= 0.0f)
+            {
+                mages[i].animationCD = DEFAULT_MAGE_ANIMATION_CD;
+                mages[i].animationIndex++;
+                if (mages[i].animationIndex == 2) mages[i].animationIndex = 0;
+            }
+            else
+            {
+                mages[i].animationCD -= deltaTime;
             }
             if (mages[i].position.x <= 120)
             {
@@ -288,6 +348,7 @@ bool UpdateDrawFrame(void)
                 {
                     mages[i].attackCD = DEFAULT_MAGE_ATTACK_CD;
                     playerHealth -= mages[i].damage;
+                    PlaySound(hitSFX);
                 }
                 else
                 {
@@ -337,27 +398,42 @@ bool UpdateDrawFrame(void)
                 {
                     if (!defenceSlots[i].isAlive)
                     {
-                        DrawCircleV(defenceSlots[i].position, 4, GRAY);
-                    }
-                }
-                for (int i=0;i<MAX_DEFENCE_SLOTS;i++)
-                {
-                    if (defenceSlots[i].isAlive)
-                    {
-                        DrawCircleV(defenceSlots[i].position, (float)defenceSlots[i].hitscanSize, Fade(GREEN, 0.4f));
+                        DrawTexturePro(assetTexture, 
+                            (Rectangle){0,0,16,16},
+                            (Rectangle){defenceSlots[i].position.x, defenceSlots[i].position.y, 16.0f, 16.0f}, 
+                            (Vector2){8,15}, 0, WHITE);
                     }
                 }
 
                 for (int i=0;i<mageAmount;i++)
                 {
-                    DrawCircleV(mages[i].position, mages[i].hitboxSize, BLUE);
+                    DrawTexturePro(assetTexture, 
+                        (Rectangle){mages[i].animationIndex*16,16,16,16}, 
+                        (Rectangle){mages[i].position.x, mages[i].position.y, 16.0f, 16.0f}, 
+                        (Vector2){8,15}, 0, WHITE);
+                }
+
+                for (int i=0;i<bulletAmount;i++)
+                {
+                    DrawLineV(Vector2Subtract(bullets[i].from, (Vector2){0,8}), Vector2Subtract(bullets[i].hit, (Vector2){0,8}), Fade(WHITE, bullets[i].duration));
+                }
+                for (int i=0;i<MAX_DEFENCE_SLOTS;i++)
+                {
+                    if (defenceSlots[i].isAlive)
+                    {
+                        DrawTexturePro(assetTexture, 
+                            (Rectangle){0,32,16,16},
+                            (Rectangle){defenceSlots[i].position.x, defenceSlots[i].position.y, 16.0f, 16.0f}, 
+                            (Vector2){8,15}, 0, WHITE);
+                        DrawCircleV(defenceSlots[i].position, (float)defenceSlots[i].hitscanSize, Fade(GREEN, 0.1f));
+                    }
                 }
                 DrawText(TextFormat("Coins: %i", coins), 10, 10, 10, GREEN);
                 DrawText(TextFormat("Level: %i", mainLevel), 10, 20, 10, GREEN);
                 DrawText(TextFormat("Health: %3.1f", playerHealth), 10, 30, 10, GREEN);
             break;
             case GameStateGameOver:
-                DrawText("Game Over", 196, SCREEN_HEIGHT*0.5f-10, 20, RED);
+                DrawText("Game Over", 196, SCREEN_HEIGHT*0.5f-10.0f, 20, RED);
             break;
             default:
             break;
@@ -376,4 +452,8 @@ void Destroy(void)
 {
     UnloadTexture(target.texture);
     UnloadTexture(level);
+    UnloadTexture(assetTexture);
+    UnloadMusicStream(backgroundMusic);
+    UnloadSound(hitSFX);
+    CloseAudioDevice();
 }
