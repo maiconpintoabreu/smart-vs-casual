@@ -5,6 +5,8 @@
 #include "raylib.h"
 #endif
 
+#include "raymath.h"
+
 #define MIN(a, b) ((a)<(b)? (a) : (b))
 
 #define SCREEN_WIDTH 500
@@ -12,8 +14,9 @@
 #define MAX_MAGES 1000
 #define MAX_DEFENCE_SLOTS 11
 #define DEFAULT_MAGE_CD 1
-int screenWidth = SCREEN_WIDTH;
-int screenHeight = SCREEN_HEIGHT;
+#define DEFAULT_MAGE_ATTACK_CD 1
+#define DEFAULT_REGEN 0.1f
+#define DEFAULT_ATTACK_CD 1
 
 // Structs
 typedef struct Mage
@@ -23,6 +26,9 @@ typedef struct Mage
     float health;
     int level;
     int hitboxSize;
+    float damage;
+    float attackCD;
+    bool isBoss;
 } Mage;
 
 typedef struct DefenceSlot
@@ -31,6 +37,7 @@ typedef struct DefenceSlot
     Texture2D texture;
     Mage *target;
     float damage;
+    float attackCD;
     int hitscanSize;
     bool isAlive;
 } DefenceSlot;
@@ -44,6 +51,7 @@ static Rectangle destinationRec = {0};
 Texture2D level = {0};
 
 // Global Variables
+Vector2 virtualMouse = { 0 };
 Mage mages[MAX_MAGES] = {0};
 DefenceSlot defenceSlots[MAX_DEFENCE_SLOTS] = {0};
 int mageAmount = 0;
@@ -51,12 +59,43 @@ int totalMageSpawned = 0;
 int mainLevel = 1;
 int coins = 0;
 float mageCD = DEFAULT_MAGE_CD;
+float playerHealth = 100.0f;
 bool spawnBossFrame = false;
+
 
 void LoadDefenceSlots(void)
 {
-    defenceSlots[0] = (DefenceSlot){(Vector2){102, 93}, {0}, NULL, 10, 50, true};
-    defenceSlots[1] = (DefenceSlot){(Vector2){104, 115}, {0}, NULL, 10, 56, true};
+    defenceSlots[0] = (DefenceSlot){(Vector2){102, 93}, {0}, NULL, 1, DEFAULT_ATTACK_CD, 50, true};
+    defenceSlots[1] = (DefenceSlot){(Vector2){104, 115}, {0}, NULL, 1, DEFAULT_ATTACK_CD, 56, true};
+    defenceSlots[2] = (DefenceSlot){(Vector2){136, 87}, {0}, NULL, 1, DEFAULT_ATTACK_CD, 56, false};
+    defenceSlots[3] = (DefenceSlot){(Vector2){136, 129}, {0}, NULL, 1, DEFAULT_ATTACK_CD, 56, false};
+    defenceSlots[4] = (DefenceSlot){(Vector2){195, 86}, {0}, NULL, 1, DEFAULT_ATTACK_CD, 56, false};
+    defenceSlots[5] = (DefenceSlot){(Vector2){225, 153}, {0}, NULL, 1, DEFAULT_ATTACK_CD, 56, false};
+    defenceSlots[6] = (DefenceSlot){(Vector2){253, 89}, {0}, NULL, 1, DEFAULT_ATTACK_CD, 56, false};
+    defenceSlots[7] = (DefenceSlot){(Vector2){291, 215}, {0}, NULL, 1, DEFAULT_ATTACK_CD, 56, false};
+    defenceSlots[8] = (DefenceSlot){(Vector2){370, 45}, {0}, NULL, 1, DEFAULT_ATTACK_CD, 56, false};
+    defenceSlots[9] = (DefenceSlot){(Vector2){388, 139}, {0}, NULL, 1, DEFAULT_ATTACK_CD, 56, false};
+    defenceSlots[10] = (DefenceSlot){(Vector2){385,211}, {0}, NULL, 1, DEFAULT_ATTACK_CD, 56, false};
+}
+
+void ToogleDefenceSlot(Vector2 point)
+{
+    for (int i=2;i<MAX_DEFENCE_SLOTS;i++)
+    {
+        if (CheckCollisionCircles(point, 10, defenceSlots[i].position, 10))
+        {
+            if (!defenceSlots[i].isAlive && coins >= 10)
+            {
+                coins -= 10;
+                defenceSlots[i].isAlive = true;
+            }
+            else
+            {
+                defenceSlots[i].isAlive = false;
+            }
+            return;
+        }
+    }
 }
 
 bool Init(void)
@@ -68,7 +107,7 @@ bool Init(void)
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
 #endif
 
-    InitWindow(screenWidth, screenHeight, "Smart vs Casual");
+    InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Smart vs Casual");
 
     level = LoadTexture("resources/levelnew.png");
 
@@ -79,7 +118,6 @@ bool Init(void)
     destinationRec = (Rectangle){ ((float)GetScreenWidth() - ((float)SCREEN_WIDTH*scale))*0.5f, ((float)GetScreenHeight() - ((float)SCREEN_HEIGHT*scale))*0.5f,
                            (float)SCREEN_WIDTH*scale, (float)SCREEN_HEIGHT*scale };
 
-
     // Set defenceSlots
     LoadDefenceSlots();
     return true;
@@ -87,13 +125,28 @@ bool Init(void)
 
 bool UpdateDrawFrame(void)
 {
-    const float deltaTime = GetFrameTime();
+    float deltaTime = GetFrameTime();
+    if (deltaTime > 1.0f) deltaTime = 0.0f;
+
+    const float scale = MIN((float)GetScreenWidth()/SCREEN_WIDTH, (float)GetScreenHeight()/SCREEN_HEIGHT);
+
     // Tick
     if (IsWindowResized())
     {
-        const float scale = MIN((float)GetScreenWidth()/SCREEN_WIDTH, (float)GetScreenHeight()/SCREEN_HEIGHT);
         destinationRec = (Rectangle){ ((float)GetScreenWidth() - ((float)SCREEN_WIDTH*scale))*0.5f, ((float)GetScreenHeight() - ((float)SCREEN_HEIGHT*scale))*0.5f,
                             (float)SCREEN_WIDTH*scale, (float)SCREEN_HEIGHT*scale };
+    }
+
+    const Vector2 mouse = GetMousePosition();
+    virtualMouse.x = (mouse.x - (GetScreenWidth() - (SCREEN_WIDTH*scale))*0.5f)/scale;
+    virtualMouse.y = (mouse.y - (GetScreenHeight() - (SCREEN_HEIGHT*scale))*0.5f)/scale;
+    virtualMouse = Vector2Clamp(virtualMouse, (Vector2){ 0, 0 }, (Vector2){SCREEN_WIDTH, SCREEN_HEIGHT });
+
+
+    // Input
+    if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT))
+    {
+        ToogleDefenceSlot(virtualMouse);
     }
     mageCD -= deltaTime;
     
@@ -107,7 +160,9 @@ bool UpdateDrawFrame(void)
                 {0},
                 10*mainLevel, 
                 mainLevel, 
-                5
+                5,
+                10,
+                true
             };
         }
         else
@@ -118,7 +173,9 @@ bool UpdateDrawFrame(void)
                 {0},
                 40*mainLevel, 
                 mainLevel+5, 
-                10
+                10,
+                10,
+                true
             };
         }
         totalMageSpawned++;
@@ -132,13 +189,12 @@ bool UpdateDrawFrame(void)
 
     for (int i=0;i<MAX_DEFENCE_SLOTS;i++)
     {
-        if (defenceSlots[i].isAlive && defenceSlots[i].target != NULL)
+        if (defenceSlots[i].isAlive && defenceSlots[i].target == NULL)
         {
             for (int j=0;j<mageAmount;j++)
             {
                 if (CheckCollisionCircles(defenceSlots[i].position, (float)defenceSlots[i].hitscanSize, mages[j].position, (float)mages[j].hitboxSize))
                 {
-                    TraceLog(LOG_INFO, "Health: %3.3f", defenceSlots[i].target->health);
                     defenceSlots[i].target = &mages[j];
                     break;
                 }
@@ -146,15 +202,27 @@ bool UpdateDrawFrame(void)
         }
     }
 
+    // TODO: Need to add CD for the attacks
     // Attack Targets
     for (int i=0;i<MAX_DEFENCE_SLOTS;i++)
     {
-        if (defenceSlots[i].isAlive && defenceSlots[i].target != NULL)
+        if (defenceSlots[i].isAlive)
         {
-            defenceSlots[i].target->health -= defenceSlots[i].damage;
-            if (defenceSlots[i].target->health <= 0.0f)
+            if (defenceSlots[i].attackCD <= 0.0f)
             {
-                defenceSlots[i].target = NULL;
+                if (defenceSlots[i].target != NULL)
+                {
+                    defenceSlots[i].target->health -= defenceSlots[i].damage;
+                    if (defenceSlots[i].target->health <= 0.0f)
+                    {
+                        defenceSlots[i].target = NULL;
+                    }
+                }
+                defenceSlots[i].attackCD = DEFAULT_ATTACK_CD;
+            }
+            else
+            {
+                defenceSlots[i].attackCD -= deltaTime;
             }
         }
     }
@@ -162,6 +230,8 @@ bool UpdateDrawFrame(void)
     {
         if (mages[i].health <= 0.0f)
         {
+            coins += 2*mages[i].level;
+            mages[i] = mages[mageAmount-1];
             mageAmount--;
             continue;
         }
@@ -182,6 +252,13 @@ bool UpdateDrawFrame(void)
 
         for (int i=0;i<MAX_DEFENCE_SLOTS;i++)
         {
+            if (!defenceSlots[i].isAlive)
+            {
+                DrawCircleV(defenceSlots[i].position, 4, GRAY);
+            }
+        }
+        for (int i=0;i<MAX_DEFENCE_SLOTS;i++)
+        {
             if (defenceSlots[i].isAlive)
             {
                 DrawCircleV(defenceSlots[i].position, (float)defenceSlots[i].hitscanSize, Fade(GREEN, 0.4f));
@@ -194,6 +271,7 @@ bool UpdateDrawFrame(void)
         }
         DrawText(TextFormat("Coins: %i", coins), 10, 10, 10, GREEN);
         DrawText(TextFormat("Level: %i", mainLevel), 10, 20, 10, GREEN);
+        DrawCircleV(GetMousePosition(), 5, YELLOW);
     EndTextureMode();
 
     BeginDrawing();
