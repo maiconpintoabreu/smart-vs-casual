@@ -18,11 +18,25 @@
 #define DEFAULT_REGEN 0.1f
 #define DEFAULT_ATTACK_CD 1
 
+// Enums
+
+typedef enum GameStateType
+{
+    GameStateMainMenu, GameStatePlaying, GameStateGameOver, GameStatePause
+} GameStateType;
+
+typedef enum LaneType
+{
+    LaneTop,LaneMid,LaneBottom
+} LaneType;
+
 // Structs
 typedef struct Mage
 {
     Vector2 position;
     Texture2D texture;
+    LaneType lane;
+    int lineProgress;
     float health;
     int level;
     int hitboxSize;
@@ -57,10 +71,19 @@ DefenceSlot defenceSlots[MAX_DEFENCE_SLOTS] = {0};
 int mageAmount = 0;
 int totalMageSpawned = 0;
 int mainLevel = 1;
-int coins = 0;
+int coins = 100;
 float mageCD = DEFAULT_MAGE_CD;
-float playerHealth = 100.0f;
+float playerHealth = 50.0f;
 bool spawnBossFrame = false;
+GameStateType gameState = GameStatePlaying;
+
+const Vector2 topLanePoints[] = {{429, 39}, {404, 60}, {364, 58}, {298, 41}, {203, 102}, {113, 104}};
+const Vector2 midLanePoints[] = {{451, 101}, {356, 130}, {261, 103}, {113, 104}};
+const Vector2 bottomLanePoints[] = {{401, 198}, {311, 196}, {258, 199}, {179, 133}, {113, 104}};
+
+const float initTopLine[] = {30, 40};
+const float initMidLine[] = {113, 123};
+const float initBottomLine[] = {178, 188};
 
 
 void LoadDefenceSlots(void)
@@ -142,136 +165,203 @@ bool UpdateDrawFrame(void)
     virtualMouse.y = (mouse.y - (GetScreenHeight() - (SCREEN_HEIGHT*scale))*0.5f)/scale;
     virtualMouse = Vector2Clamp(virtualMouse, (Vector2){ 0, 0 }, (Vector2){SCREEN_WIDTH, SCREEN_HEIGHT });
 
+    switch (gameState) {
+        case GameStatePlaying:
 
-    // Input
-    if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT))
-    {
-        ToogleDefenceSlot(virtualMouse);
-    }
-    mageCD -= deltaTime;
-    
-    if (mageCD <= 0.0f)
-    {
-        mageCD = DEFAULT_MAGE_CD*(10.0f/mainLevel); // TODO: change later to increse difficult by time
-        if (!spawnBossFrame)
+        // Input
+        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT))
         {
-            mages[mageAmount++] = (Mage){
-                (Vector2){SCREEN_WIDTH, SCREEN_HEIGHT*0.5f}, 
-                {0},
-                10*mainLevel, 
-                mainLevel, 
-                5,
-                10,
-                true
-            };
+            ToogleDefenceSlot(virtualMouse);
         }
-        else
+        mageCD -= deltaTime;
+        
+        if (mageCD <= 0.0f)
         {
-            spawnBossFrame = false;
-            mages[mageAmount++] = (Mage){
-                (Vector2){SCREEN_WIDTH, SCREEN_HEIGHT*0.5f}, 
-                {0},
-                40*mainLevel, 
-                mainLevel+5, 
-                10,
-                10,
-                true
-            };
-        }
-        totalMageSpawned++;
-        if (totalMageSpawned >= 10*mainLevel)
-        {
-            totalMageSpawned = 0;
-            mainLevel++;
-            spawnBossFrame = true;
-        }
-    }
-
-    for (int i=0;i<MAX_DEFENCE_SLOTS;i++)
-    {
-        if (defenceSlots[i].isAlive && defenceSlots[i].target == NULL)
-        {
-            for (int j=0;j<mageAmount;j++)
+            mageCD = DEFAULT_MAGE_CD*(10.0f/mainLevel); // TODO: change later to increse difficult by time
+            if (!spawnBossFrame)
             {
-                if (CheckCollisionCircles(defenceSlots[i].position, (float)defenceSlots[i].hitscanSize, mages[j].position, (float)mages[j].hitboxSize))
-                {
-                    defenceSlots[i].target = &mages[j];
+                LaneType laneToSpawn;
+                Vector2 position = {SCREEN_WIDTH, SCREEN_HEIGHT*0.5f};
+                switch (GetRandomValue(0, 2)) {
+                    case 0:
+                        position = (Vector2){SCREEN_WIDTH, GetRandomValue(initTopLine[0], initTopLine[1])};
+                        laneToSpawn = LaneTop;
+                    break;
+                    case 1:
+                        position = (Vector2){SCREEN_WIDTH, GetRandomValue(initBottomLine[0], initBottomLine[1])};
+                        laneToSpawn = LaneBottom;
+                    break;
+                    case 2:
+                    default:
+                        position = (Vector2){SCREEN_WIDTH, GetRandomValue(initMidLine[0], initMidLine[1])};
+                        laneToSpawn = LaneMid;
                     break;
                 }
-            }
-        }
-    }
-
-    // TODO: Need to add CD for the attacks
-    // Attack Targets
-    for (int i=0;i<MAX_DEFENCE_SLOTS;i++)
-    {
-        if (defenceSlots[i].isAlive)
-        {
-            if (defenceSlots[i].attackCD <= 0.0f)
-            {
-                if (defenceSlots[i].target != NULL)
-                {
-                    defenceSlots[i].target->health -= defenceSlots[i].damage;
-                    if (defenceSlots[i].target->health <= 0.0f)
-                    {
-                        defenceSlots[i].target = NULL;
-                    }
-                }
-                defenceSlots[i].attackCD = DEFAULT_ATTACK_CD;
+                mages[mageAmount++] = (Mage){
+                    position, 
+                    {0},
+                    laneToSpawn,
+                    0,
+                    10*mainLevel, 
+                    mainLevel, 
+                    5,
+                    10,
+                    DEFAULT_MAGE_ATTACK_CD,
+                    false
+                };
             }
             else
             {
-                defenceSlots[i].attackCD -= deltaTime;
+                spawnBossFrame = false;
+                mages[mageAmount++] = (Mage){
+                    (Vector2){SCREEN_WIDTH, initMidLine[0]+(initMidLine[1]-initMidLine[0])*0.5f}, 
+                    {0},
+                    LaneMid,
+                    0,
+                    40*mainLevel, 
+                    mainLevel+5, 
+                    10,
+                    10,
+                    DEFAULT_MAGE_ATTACK_CD,
+                    true
+                };
+            }
+            totalMageSpawned++;
+            if (totalMageSpawned >= 10*mainLevel)
+            {
+                totalMageSpawned = 0;
+                mainLevel++;
+                spawnBossFrame = true;
             }
         }
-    }
-    for (int i=mageAmount-1;i>=0;i--)
-    {
-        if (mages[i].health <= 0.0f)
+
+        for (int i=0;i<MAX_DEFENCE_SLOTS;i++)
         {
-            coins += 2*mages[i].level;
-            mages[i] = mages[mageAmount-1];
-            mageAmount--;
-            continue;
+            if (defenceSlots[i].isAlive && defenceSlots[i].target == NULL)
+            {
+                for (int j=0;j<mageAmount;j++)
+                {
+                    if (CheckCollisionCircles(defenceSlots[i].position, (float)defenceSlots[i].hitscanSize, mages[j].position, (float)mages[j].hitboxSize))
+                    {
+                        defenceSlots[i].target = &mages[j];
+                        break;
+                    }
+                }
+            }
         }
-        if (mages[i].position.x <= 120)
+
+        // Attack Targets
+        for (int i=0;i<MAX_DEFENCE_SLOTS;i++)
         {
-            // Damage
+            if (defenceSlots[i].isAlive)
+            {
+                if (defenceSlots[i].attackCD <= 0.0f)
+                {
+                    if (defenceSlots[i].target != NULL)
+                    {
+                        defenceSlots[i].target->health -= defenceSlots[i].damage;
+                        if (defenceSlots[i].target->health <= 0.0f)
+                        {
+                            defenceSlots[i].target = NULL;
+                        }
+                    }
+                    defenceSlots[i].attackCD = DEFAULT_ATTACK_CD;
+                }
+                else
+                {
+                    defenceSlots[i].attackCD -= deltaTime;
+                }
+            }
         }
-        else
+        for (int i=mageAmount-1;i>=0;i--)
         {
-            mages[i].position.x -= 10*deltaTime;
+            if (mages[i].health <= 0.0f)
+            {
+                coins += 2*mages[i].level;
+                mages[i] = mages[mageAmount-1];
+                mageAmount--;
+                continue;
+            }
+            if (mages[i].position.x <= 120)
+            {
+                if (mages[i].attackCD <= 0.0f)
+                {
+                    mages[i].attackCD = DEFAULT_MAGE_ATTACK_CD;
+                    playerHealth -= mages[i].damage;
+                }
+                else
+                {
+                    mages[i].attackCD -= deltaTime;
+                }
+            }
+            else
+            {
+                Vector2 direction = {0};
+                switch (mages[i].lane) {
+                    case LaneTop:
+                        if (topLanePoints[mages[i].lineProgress].x+5 > mages[i].position.x) mages[i].lineProgress++;
+                        direction = Vector2Normalize(Vector2Subtract(topLanePoints[mages[i].lineProgress], mages[i].position));
+                    break;
+                    case LaneMid:
+                        if (midLanePoints[mages[i].lineProgress].x+5 > mages[i].position.x) mages[i].lineProgress++;
+                        direction = Vector2Normalize(Vector2Subtract(midLanePoints[mages[i].lineProgress], mages[i].position));
+                    break;
+                    case LaneBottom:
+                        if (bottomLanePoints[mages[i].lineProgress].x+5 > mages[i].position.x) mages[i].lineProgress++;
+                        direction = Vector2Normalize(Vector2Subtract(bottomLanePoints[mages[i].lineProgress], mages[i].position));
+                    break;
+                }
+                mages[i].position = Vector2Add(mages[i].position, Vector2Scale(direction, 10*deltaTime));
+            }
         }
+
+        // Check if player is dead
+        if (playerHealth <= 0.0f)
+        {
+            gameState = GameStateGameOver;
+        }
+
+        break;
+        default:
+        break;
     }
 
     // Draw
     BeginTextureMode(target);
         ClearBackground(WHITE);
-        DrawTexture(level, 0, 0, WHITE);
+        switch (gameState) {
+            case GameStatePlaying:
+                DrawTexture(level, 0, 0, WHITE);
 
-        for (int i=0;i<MAX_DEFENCE_SLOTS;i++)
-        {
-            if (!defenceSlots[i].isAlive)
-            {
-                DrawCircleV(defenceSlots[i].position, 4, GRAY);
-            }
-        }
-        for (int i=0;i<MAX_DEFENCE_SLOTS;i++)
-        {
-            if (defenceSlots[i].isAlive)
-            {
-                DrawCircleV(defenceSlots[i].position, (float)defenceSlots[i].hitscanSize, Fade(GREEN, 0.4f));
-            }
-        }
+                for (int i=0;i<MAX_DEFENCE_SLOTS;i++)
+                {
+                    if (!defenceSlots[i].isAlive)
+                    {
+                        DrawCircleV(defenceSlots[i].position, 4, GRAY);
+                    }
+                }
+                for (int i=0;i<MAX_DEFENCE_SLOTS;i++)
+                {
+                    if (defenceSlots[i].isAlive)
+                    {
+                        DrawCircleV(defenceSlots[i].position, (float)defenceSlots[i].hitscanSize, Fade(GREEN, 0.4f));
+                    }
+                }
 
-        for (int i=0;i<mageAmount;i++)
-        {
-            DrawCircleV(mages[i].position, mages[i].hitboxSize, BLUE);
+                for (int i=0;i<mageAmount;i++)
+                {
+                    DrawCircleV(mages[i].position, mages[i].hitboxSize, BLUE);
+                }
+                DrawText(TextFormat("Coins: %i", coins), 10, 10, 10, GREEN);
+                DrawText(TextFormat("Level: %i", mainLevel), 10, 20, 10, GREEN);
+                DrawText(TextFormat("Health: %3.1f", playerHealth), 10, 30, 10, GREEN);
+            break;
+            case GameStateGameOver:
+                DrawText("Game Over", 196, SCREEN_HEIGHT*0.5f-10, 20, RED);
+            break;
+            default:
+            break;
         }
-        DrawText(TextFormat("Coins: %i", coins), 10, 10, 10, GREEN);
-        DrawText(TextFormat("Level: %i", mainLevel), 10, 20, 10, GREEN);
-        DrawCircleV(GetMousePosition(), 5, YELLOW);
     EndTextureMode();
 
     BeginDrawing();
