@@ -417,10 +417,12 @@ bool UpdateDrawFrame(void)
             case GameStateMainMenu:
                 DrawRectangleRounded(startGameRec, 2, 2, DARKGRAY);
                 DrawRectangleRounded(quitGameRec, 2, 2, DARKGRAY);
-                DrawText("Start Game", (startGameRec.x+startGameRec.width*0.5f)-MeasureTextEx(GetFontDefault(), "Start Game   ", 20, 0).x*0.5f, startGameRec.y+startGameRec.height*0.5f-10.0f, 20, LIGHTGRAY);
-                DrawText("Quit", (quitGameRec.x+quitGameRec.width*0.5f)-MeasureTextEx(GetFontDefault(), "Quit", 20, 0).x*0.5f, quitGameRec.y+quitGameRec.height*0.5f-10.0f, 20, LIGHTGRAY);
+                DrawText("Start Game", (startGameRec.x+startGameRec.width*0.5f)-MeasureTextEx(GetFontDefault(), "Start Game", 20, 2).x*0.5f, startGameRec.y+startGameRec.height*0.5f-10.0f, 20, LIGHTGRAY);
+                DrawText("Quit", (quitGameRec.x+quitGameRec.width*0.5f)-MeasureTextEx(GetFontDefault(), "Quit", 20, 2).x*0.5f, quitGameRec.y+quitGameRec.height*0.5f-10.0f, 20, LIGHTGRAY);
                 DrawRectangleRoundedLinesEx(startGameRec, 2, 4,2, BLACK);
                 DrawRectangleRoundedLinesEx(quitGameRec, 2, 4,2, BLACK);
+                DrawText("Smart vs Casual", (SCREEN_WIDTH*0.5f)-MeasureTextEx(GetFontDefault(), "Smart vs Casual", 20, 2).x*0.5f, 20, 20, DARKGRAY);
+                DrawText("If you try too hard the game will hit harder", (SCREEN_WIDTH*0.5f)-MeasureTextEx(GetFontDefault(), "If you try too hard the game will hit harder", 10, 1).x*0.5f, 40, 10, Fade(DARKGRAY, 0.8f));
             break;
             case GameStatePlaying:
                 DrawTexture(level, 0, 0, WHITE);
