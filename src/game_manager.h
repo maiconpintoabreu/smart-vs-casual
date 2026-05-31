@@ -13,8 +13,10 @@
 #define SCREEN_HEIGHT 225
 #define MAX_MAGES 1000
 #define MAX_DEFENCE_SLOTS 11
+#define MAX_CASUAL_LEVEL 1.0f
 #define DEFAULT_MAGE_CD 1
 #define DEFAULT_MAGE_ATTACK_CD 1
+#define DEFAULT_MAGE_HEALTH 5
 #define DEFAULT_MAGE_ANIMATION_CD 0.4f
 #define DEFAULT_REGEN 0.1f
 #define DEFAULT_ATTACK_CD 1
@@ -70,6 +72,10 @@ RenderTexture target = {0};
 static Rectangle sourceRec = {0};
 static Rectangle destinationRec = {0};
 
+// Main Menu
+const Rectangle startGameRec = {150, SCREEN_HEIGHT*0.5f-(25.0f+40.0f*0.5f), 200, 40};
+const Rectangle quitGameRec = {150, SCREEN_HEIGHT*0.5f+(25.0f-40.0f*0.5f), 200, 40};
+
 // Level Design
 Texture2D level = {0};
 
@@ -87,9 +93,10 @@ int totalMageSpawned = 0;
 int mainLevel = 1;
 int coins = 100;
 float mageCD = DEFAULT_MAGE_CD;
+float casualLevel = MAX_CASUAL_LEVEL;
 float playerHealth = 50.0f;
 bool spawnBossFrame = false;
-GameStateType gameState = GameStatePlaying;
+GameStateType gameState = GameStateMainMenu;
 
 const Vector2 topLanePoints[] = {{429, 39}, {404, 60}, {364, 58}, {298, 41}, {203, 102}, {113, 104}};
 const Vector2 midLanePoints[] = {{451, 101}, {356, 130}, {261, 103}, {113, 104}};
@@ -169,7 +176,7 @@ bool UpdateDrawFrame(void)
     float deltaTime = GetFrameTime();
     if (deltaTime > 1.0f) deltaTime = 0.0f;
 
-    playerHealth = Clamp(playerHealth+DEFAULT_REGEN*deltaTime, 0.0f, 50.0f);
+    playerHealth = Clamp(playerHealth+DEFAULT_REGEN*deltaTime, 0.0f, 50.0f*mainLevel);
 
     const float scale = MIN((float)GetScreenWidth()/SCREEN_WIDTH, (float)GetScreenHeight()/SCREEN_HEIGHT);
 
@@ -186,6 +193,22 @@ bool UpdateDrawFrame(void)
     virtualMouse = Vector2Clamp(virtualMouse, (Vector2){ 0, 0 }, (Vector2){SCREEN_WIDTH, SCREEN_HEIGHT });
 
     switch (gameState) {
+        case GameStateMainMenu:
+            if (CheckCollisionPointRec(virtualMouse, startGameRec))
+            {
+                if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT))
+                {
+                    gameState = GameStatePlaying;
+                }
+            }
+            if (CheckCollisionPointRec(virtualMouse, quitGameRec))
+            {
+                if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT))
+                {
+                    return false;
+                }
+            }
+        break;
         case GameStatePlaying:
 
         // Input
@@ -193,7 +216,7 @@ bool UpdateDrawFrame(void)
         {
             ToogleDefenceSlot(virtualMouse);
         }
-        mageCD -= deltaTime;
+        mageCD -= 0.5f/casualLevel*deltaTime;
         if (IsAudioDeviceReady())
         {
             if (IsMusicValid(backgroundMusic) && !IsMusicStreamPlaying(backgroundMusic)) PlayMusicStream(backgroundMusic);
@@ -202,7 +225,7 @@ bool UpdateDrawFrame(void)
         
         if (mageCD <= 0.0f)
         {
-            mageCD = DEFAULT_MAGE_CD*(10.0f/mainLevel); // TODO: change later to increse difficult by time
+            mageCD = DEFAULT_MAGE_CD*(10.0f/mainLevel);
             if (!spawnBossFrame)
             {
                 LaneType laneToSpawn;
@@ -229,8 +252,8 @@ bool UpdateDrawFrame(void)
                     mainLevel, 
                     5,
                     0,
-                    10,
-                    10*mainLevel, 
+                    DEFAULT_MAGE_HEALTH,
+                    DEFAULT_MAGE_HEALTH*mainLevel, 
                     DEFAULT_MAGE_ATTACK_CD,
                     DEFAULT_MAGE_ANIMATION_CD,
                     false
@@ -246,8 +269,8 @@ bool UpdateDrawFrame(void)
                     mainLevel+5, 
                     10,
                     0,
-                    40*mainLevel, 
-                    10,
+                    DEFAULT_MAGE_HEALTH*3*mainLevel, 
+                    DEFAULT_MAGE_HEALTH*3,
                     DEFAULT_MAGE_ATTACK_CD,
                     DEFAULT_MAGE_ANIMATION_CD,
                     true
@@ -391,6 +414,14 @@ bool UpdateDrawFrame(void)
     BeginTextureMode(target);
         ClearBackground(WHITE);
         switch (gameState) {
+            case GameStateMainMenu:
+                DrawRectangleRounded(startGameRec, 2, 2, DARKGRAY);
+                DrawRectangleRounded(quitGameRec, 2, 2, DARKGRAY);
+                DrawText("Start Game", (startGameRec.x+startGameRec.width*0.5f)-MeasureTextEx(GetFontDefault(), "Start Game   ", 20, 0).x*0.5f, startGameRec.y+startGameRec.height*0.5f-10.0f, 20, LIGHTGRAY);
+                DrawText("Quit", (quitGameRec.x+quitGameRec.width*0.5f)-MeasureTextEx(GetFontDefault(), "Quit", 20, 0).x*0.5f, quitGameRec.y+quitGameRec.height*0.5f-10.0f, 20, LIGHTGRAY);
+                DrawRectangleRoundedLinesEx(startGameRec, 2, 4,2, BLACK);
+                DrawRectangleRoundedLinesEx(quitGameRec, 2, 4,2, BLACK);
+            break;
             case GameStatePlaying:
                 DrawTexture(level, 0, 0, WHITE);
 
@@ -398,6 +429,7 @@ bool UpdateDrawFrame(void)
                 {
                     if (!defenceSlots[i].isAlive)
                     {
+                        casualLevel = Clamp(casualLevel+0.01f*deltaTime, 0.0f, MAX_CASUAL_LEVEL);
                         DrawTexturePro(assetTexture, 
                             (Rectangle){0,0,16,16},
                             (Rectangle){defenceSlots[i].position.x, defenceSlots[i].position.y, 16.0f, 16.0f}, 
@@ -421,6 +453,7 @@ bool UpdateDrawFrame(void)
                 {
                     if (defenceSlots[i].isAlive)
                     {
+                        if (i > 1) casualLevel = Clamp(casualLevel-0.06f*deltaTime, 0.0f, MAX_CASUAL_LEVEL);
                         DrawTexturePro(assetTexture, 
                             (Rectangle){0,32,16,16},
                             (Rectangle){defenceSlots[i].position.x, defenceSlots[i].position.y, 16.0f, 16.0f}, 
@@ -431,6 +464,10 @@ bool UpdateDrawFrame(void)
                 DrawText(TextFormat("Coins: %i", coins), 10, 10, 10, GREEN);
                 DrawText(TextFormat("Level: %i", mainLevel), 10, 20, 10, GREEN);
                 DrawText(TextFormat("Health: %3.1f", playerHealth), 10, 30, 10, GREEN);
+                DrawRectangle(200, 10, 99*casualLevel, 20, LIGHTGRAY);
+                if (casualLevel < 0.5f) DrawText("HARD", 250-(MeasureTextEx(GetFontDefault(), "HARD", 20, 0).x*0.5f), 15, 10, BLACK);
+                if (casualLevel >= 0.5f) DrawText("CASUAL", 250-(MeasureTextEx(GetFontDefault(), "CASUAL", 20, 0).x*0.5f), 15, 10, BLACK);
+                DrawRectangleLines(200, 10, 100, 20, BLACK);
             break;
             case GameStateGameOver:
                 DrawText("Game Over", 196, SCREEN_HEIGHT*0.5f-10.0f, 20, RED);

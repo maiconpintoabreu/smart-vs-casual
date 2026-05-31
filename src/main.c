@@ -44,7 +44,12 @@ int main()
 
     SetTargetFPS(60);
     // Main game loop
-    while (!WindowShouldClose()) {UpdateDrawFrame(); }
+    while (!WindowShouldClose()) {
+        if(!UpdateDrawFrame())
+        {
+            break;
+        }
+    }
 #endif
 
     // De-Initialization
