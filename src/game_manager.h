@@ -14,6 +14,7 @@
 #define MAX_MAGES 1000
 #define MAX_DEFENCE_SLOTS 11
 #define MAX_CASUAL_LEVEL 1.0f
+#define MAX_PARTICLES 1000
 #define DEFAULT_MAGE_CD 1
 #define DEFAULT_MAGE_ATTACK_CD 1
 #define DEFAULT_MAGE_HEALTH 4
@@ -68,6 +69,17 @@ typedef struct Bullet
     float duration;
 } Bullet;
 
+typedef struct Particles {
+    Vector2 position;
+    Vector2 acceleration;
+    Color color;
+    float size;
+    float maxLifeTime;
+    float lifeTime;
+    bool isAlive;
+} Particles;
+
+
 // PreRender Variables
 RenderTexture target = {0};
 static Rectangle sourceRec = {0};
@@ -86,6 +98,7 @@ Vector2 virtualMouse = {0};
 Mage mages[MAX_MAGES] = {0};
 DefenceSlot defenceSlots[MAX_DEFENCE_SLOTS] = {0};
 Bullet bullets[MAX_DEFENCE_SLOTS*2] = {0};
+Particles particles[MAX_PARTICLES] = {0};
 Texture2D assetTexture = {0};
 Music backgroundMusic = {0};
 Sound hitSFX = {0};
@@ -123,6 +136,11 @@ void RestartGame(void)
     for (int i=2;i<MAX_DEFENCE_SLOTS;i++)
     {
         defenceSlots[i].isAlive = false;
+    }
+
+    for (int i=1; i<MAX_PARTICLES; i++)
+    {
+        particles[i].isAlive = false;
     }
 
 }
@@ -248,6 +266,15 @@ void DrawFrame(float deltaTime)
                         DrawCircleV(defenceSlots[i].position, (float)defenceSlots[i].hitscanSize, Fade(GREEN, 0.1f));
                     }
                 }
+
+                for (int i = 0; i < MAX_PARTICLES; i++) {
+                    if (particles[i].isAlive)
+                    {
+                        Color particleColor = Fade(particles[i].color, particles[i].lifeTime / particles[i].maxLifeTime);
+                        DrawCircleV(particles[i].position, particles[i].size, particleColor);
+                    }
+                }
+
                 DrawRectangle(10, 40, 99*casualLevel, 20, GRAY);
                 if (casualLevel < 0.5f) DrawText("HARD", 60-(MeasureTextEx(GetFontDefault(), "HARD", 10, 1).x*0.5f), 45, 10, BLACK);
                 if (casualLevel >= 0.5f) DrawText("CASUAL", 60-(MeasureTextEx(GetFontDefault(), "CASUAL", 10, 1).x*0.5f), 45, 10, BLACK);
@@ -467,8 +494,36 @@ bool UpdateDrawFrame(void)
             if (mages[i].health <= 0.0f)
             {
                 coins += 2*mages[i].level;
+
+                Vector2 particlesPosition = mages[i].position;
+
+                // Spawn Particles
+                int spreadX = 25;
+                int startAccelerationY = -100;
+                int howManyParticles = 20;
+
+                for (int n = 0;n < MAX_PARTICLES; n++)
+                {
+                    if (!particles[n].isAlive)
+                    {
+                        particles[n].isAlive = true;
+                        particles[n].maxLifeTime = 0.5f;
+                        particles[n].position = particlesPosition;
+                        particles[n].size = 3;
+                        particles[n].lifeTime = particles[n].maxLifeTime;
+                        particles[n].acceleration.x = (float)GetRandomValue(-spreadX, spreadX) ;
+                        particles[n].acceleration.y = (float)GetRandomValue(startAccelerationY, 100);
+                        particles[n].color = BROWN;
+                        howManyParticles -= 1;
+                        if (howManyParticles <= 0)
+                        {
+                            break;
+                        }
+                    }
+                }
                 mageAmount--;
                 mages[i] = mages[mageAmount];
+
                 continue;
             }
             if (mages[i].animationCD <= 0.0f)
@@ -521,6 +576,22 @@ bool UpdateDrawFrame(void)
         {
             gameState = GameStateGameOver;
             return true;
+        }
+
+        // Update Particles
+        for (int i = 0; i < MAX_PARTICLES; i++)
+        {
+            if (particles[i].isAlive)
+            {
+                particles[i].lifeTime -= deltaTime;
+                if (particles[i].lifeTime <=0.0f)
+                {
+                    particles[i].isAlive = false;
+                    continue;
+                }
+
+                particles[i].position = Vector2Add(particles[i].position, Vector2Scale(particles[i].acceleration, deltaTime));
+            }
         }
         
         counterChangeLevel += deltaTime;
