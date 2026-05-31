@@ -16,8 +16,9 @@
 #define MAX_CASUAL_LEVEL 1.0f
 #define DEFAULT_MAGE_CD 1
 #define DEFAULT_MAGE_ATTACK_CD 1
-#define DEFAULT_MAGE_HEALTH 5
+#define DEFAULT_MAGE_HEALTH 4
 #define DEFAULT_MAGE_ANIMATION_CD 0.4f
+#define DEFAULT_MAGE_SPEED 10
 #define DEFAULT_REGEN 0.1f
 #define DEFAULT_ATTACK_CD 1
 #define DEFAULT_ATTACK_DURATION 0.4f
@@ -89,9 +90,10 @@ Music backgroundMusic = {0};
 Sound hitSFX = {0};
 int mageAmount = 0;
 int bulletAmount = 0;
-int totalMageSpawned = 0;
+float counterChangeLevel = 0.0f;
 int mainLevel = 1;
 int coins = 100;
+int extraDefenceActivatedAmount = 0;
 float mageCD = DEFAULT_MAGE_CD;
 float casualLevel = MAX_CASUAL_LEVEL;
 float playerHealth = DEFAULT_HEALTH;
@@ -110,7 +112,8 @@ void RestartGame(void)
 {
     mageAmount = 0;
     bulletAmount = 0;
-    totalMageSpawned = 0;
+    counterChangeLevel = 0.0f;
+    extraDefenceActivatedAmount = 0;
     mainLevel = 1;
     coins = 100;
     casualLevel = 1.0f;
@@ -148,10 +151,12 @@ void ToogleDefenceSlot(Vector2 point)
             {
                 coins -= 10;
                 defenceSlots[i].isAlive = true;
+                extraDefenceActivatedAmount++;
             }
             else
             {
                 defenceSlots[i].isAlive = false;
+                extraDefenceActivatedAmount--;
             }
             return;
         }
@@ -186,6 +191,90 @@ bool Init(void)
     hitSFX = LoadSound("resources/hit.wav");
     return true;
 }
+
+void DrawFrame(float deltaTime)
+{
+    // Draw
+    BeginTextureMode(target);
+        ClearBackground(GRAY);
+        switch (gameState) {
+            case GameStateMainMenu:
+                DrawRectangleRounded(startGameRec, 2, 2, DARKGRAY);
+                DrawRectangleRounded(quitGameRec, 2, 2, DARKGRAY);
+                DrawText("Start Game", (startGameRec.x+startGameRec.width*0.5f)-MeasureTextEx(GetFontDefault(), "Start Game", 20, 2).x*0.5f, startGameRec.y+startGameRec.height*0.5f-10.0f, 20, LIGHTGRAY);
+                DrawText("Quit", (quitGameRec.x+quitGameRec.width*0.5f)-MeasureTextEx(GetFontDefault(), "Quit", 20, 2).x*0.5f, quitGameRec.y+quitGameRec.height*0.5f-10.0f, 20, LIGHTGRAY);
+                DrawRectangleRoundedLinesEx(startGameRec, 2, 4,2, BLACK);
+                DrawRectangleRoundedLinesEx(quitGameRec, 2, 4,2, BLACK);
+                DrawText("Smart vs Casual", (SCREEN_WIDTH*0.5f)-MeasureTextEx(GetFontDefault(), "Smart vs Casual", 20, 2).x*0.5f, 20, 20, DARKGRAY);
+                DrawText("If you try too hard the game will hit harder", (SCREEN_WIDTH*0.5f)-MeasureTextEx(GetFontDefault(), "If you try too hard the game will hit harder", 10, 1).x*0.5f, 40, 10, Fade(DARKGRAY, 0.8f));
+            break;
+            case GameStatePlaying:
+                DrawTexture(level, 0, 0, WHITE);
+
+                for (int i=0;i<MAX_DEFENCE_SLOTS;i++)
+                {
+                    if (!defenceSlots[i].isAlive)
+                    {
+                        casualLevel = Clamp(casualLevel+0.01f*deltaTime, 0.0f, MAX_CASUAL_LEVEL);
+                    }
+                    DrawTexturePro(assetTexture, 
+                        (Rectangle){0,0,16,16},
+                        (Rectangle){defenceSlots[i].position.x, defenceSlots[i].position.y, 16.0f, 16.0f}, 
+                        (Vector2){8,15}, 0, WHITE);
+                }
+
+                for (int i=0;i<mageAmount;i++)
+                {
+                    const float mageSize = mages[i].isBoss ? 32.0f : 16.0f;
+                    DrawTexturePro(assetTexture, 
+                        (Rectangle){mages[i].animationIndex*16.0f,16.0f,16.0f,16.0f}, 
+                        (Rectangle){mages[i].position.x, mages[i].position.y, mageSize, mageSize}, 
+                        (Vector2){8,mageSize-1}, 0, mages[i].isBoss ? RED : WHITE);
+                }
+
+                for (int i=0;i<bulletAmount;i++)
+                {
+                    DrawLineV(Vector2Subtract(bullets[i].from, (Vector2){0,8}), Vector2Subtract(bullets[i].hit, (Vector2){0,8}), Fade(WHITE, bullets[i].duration));
+                }
+                for (int i=0;i<MAX_DEFENCE_SLOTS;i++)
+                {
+                    if (defenceSlots[i].isAlive)
+                    {
+                        DrawTexturePro(assetTexture, 
+                            (Rectangle){0,32,16,16},
+                            (Rectangle){defenceSlots[i].position.x, defenceSlots[i].position.y-5, 16.0f, 16.0f}, 
+                            (Vector2){8,15}, 0, WHITE);
+                        DrawCircleV(defenceSlots[i].position, (float)defenceSlots[i].hitscanSize, Fade(GREEN, 0.1f));
+                    }
+                }
+                DrawRectangle(10, 40, 99*casualLevel, 20, GRAY);
+                if (casualLevel < 0.5f) DrawText("HARD", 60-(MeasureTextEx(GetFontDefault(), "HARD", 10, 1).x*0.5f), 45, 10, BLACK);
+                if (casualLevel >= 0.5f) DrawText("CASUAL", 60-(MeasureTextEx(GetFontDefault(), "CASUAL", 10, 1).x*0.5f), 45, 10, BLACK);
+                DrawRectangleLines(10, 40, 100, 20, BLACK);
+
+                DrawRectangle(10, 20, 99*(playerHealth/(DEFAULT_HEALTH*mainLevel)), 15, GRAY);
+                DrawText("HEALTH", 60-(MeasureTextEx(GetFontDefault(), "HEALTH", 10, 1).x*0.5f), 23, 10, BLACK);
+                DrawRectangleLines(10, 20, 100, 15, BLACK);
+                DrawText(TextFormat("Coins: %i", coins), 10, 10, 10, BLACK);
+                const char *levelText = TextFormat("Level -> %i", mainLevel);
+                DrawText(levelText, SCREEN_WIDTH*0.5f-(MeasureTextEx(GetFontDefault(), levelText, 10, 1).x*0.5f), 10, 10, BLACK);
+            break;
+            case GameStateGameOver:
+                DrawText("Restart Game", (startGameRec.x+startGameRec.width*0.5f)-MeasureTextEx(GetFontDefault(), "Restart Game", 20, 2).x*0.5f, startGameRec.y+startGameRec.height*0.5f-10.0f, 20, LIGHTGRAY);
+                DrawText("Game Over", 196, SCREEN_HEIGHT*0.5f-10.0f, 20, RED);
+            break;
+            default:
+            break;
+        }
+    EndTextureMode();
+
+    BeginDrawing();
+        ClearBackground(GRAY);
+
+        DrawTexturePro(target.texture, sourceRec, destinationRec, (Vector2){0}, 0.0f, WHITE);
+    EndDrawing();
+}
+
 
 bool UpdateDrawFrame(void)
 {
@@ -234,6 +323,9 @@ bool UpdateDrawFrame(void)
         }
         const float mageCDbyCausalLevel = casualLevel > 0.1f ? 1.0f/casualLevel : 11.0f;
         mageCD -= mageCDbyCausalLevel*deltaTime;
+        float deviceUsagePercentage = (1-(extraDefenceActivatedAmount/(MAX_DEFENCE_SLOTS-2.0f)));
+        casualLevel = Lerp(casualLevel, deviceUsagePercentage, deltaTime);
+
         if (IsAudioDeviceReady())
         {
             if (IsMusicValid(backgroundMusic) && !IsMusicStreamPlaying(backgroundMusic)) PlayMusicStream(backgroundMusic);
@@ -292,13 +384,6 @@ bool UpdateDrawFrame(void)
                     DEFAULT_MAGE_ANIMATION_CD,
                     true
                 };
-            }
-            totalMageSpawned++;
-            if (totalMageSpawned >= 10*mainLevel)
-            {
-                totalMageSpawned = 0;
-                mainLevel++;
-                spawnBossFrame = true;
             }
         }
 
@@ -412,7 +497,8 @@ bool UpdateDrawFrame(void)
                         direction = Vector2Normalize(Vector2Subtract(bottomLanePoints[mages[i].lineProgress], mages[i].position));
                     break;
                 }
-                mages[i].position = Vector2Add(mages[i].position, Vector2Scale(direction, 10*deltaTime));
+                float speed = casualLevel > 0.1f ? (DEFAULT_MAGE_SPEED*mainLevel)/casualLevel : (DEFAULT_MAGE_SPEED*mainLevel)/0.1f;
+                mages[i].position = Vector2Add(mages[i].position, Vector2Scale(direction, speed*deltaTime));
             }
         }
 
@@ -420,6 +506,18 @@ bool UpdateDrawFrame(void)
         if (playerHealth <= 0.0f)
         {
             gameState = GameStateGameOver;
+            return true;
+        }
+        
+        counterChangeLevel += deltaTime;
+        TraceLog(LOG_INFO, "Test: %3.3f",counterChangeLevel);
+        if (counterChangeLevel >= 30*mainLevel)
+        {
+            counterChangeLevel = 0.0f;
+            float percentage = playerHealth/(DEFAULT_HEALTH*mainLevel);
+            mainLevel++;
+            playerHealth = (DEFAULT_HEALTH*mainLevel)*percentage;
+            spawnBossFrame = true;
         }
 
         break;
@@ -436,83 +534,7 @@ bool UpdateDrawFrame(void)
         default:
         break;
     }
-
-    // Draw
-    BeginTextureMode(target);
-        ClearBackground(WHITE);
-        switch (gameState) {
-            case GameStateMainMenu:
-                DrawRectangleRounded(startGameRec, 2, 2, DARKGRAY);
-                DrawRectangleRounded(quitGameRec, 2, 2, DARKGRAY);
-                DrawText("Start Game", (startGameRec.x+startGameRec.width*0.5f)-MeasureTextEx(GetFontDefault(), "Start Game", 20, 2).x*0.5f, startGameRec.y+startGameRec.height*0.5f-10.0f, 20, LIGHTGRAY);
-                DrawText("Quit", (quitGameRec.x+quitGameRec.width*0.5f)-MeasureTextEx(GetFontDefault(), "Quit", 20, 2).x*0.5f, quitGameRec.y+quitGameRec.height*0.5f-10.0f, 20, LIGHTGRAY);
-                DrawRectangleRoundedLinesEx(startGameRec, 2, 4,2, BLACK);
-                DrawRectangleRoundedLinesEx(quitGameRec, 2, 4,2, BLACK);
-                DrawText("Smart vs Casual", (SCREEN_WIDTH*0.5f)-MeasureTextEx(GetFontDefault(), "Smart vs Casual", 20, 2).x*0.5f, 20, 20, DARKGRAY);
-                DrawText("If you try too hard the game will hit harder", (SCREEN_WIDTH*0.5f)-MeasureTextEx(GetFontDefault(), "If you try too hard the game will hit harder", 10, 1).x*0.5f, 40, 10, Fade(DARKGRAY, 0.8f));
-            break;
-            case GameStatePlaying:
-                DrawTexture(level, 0, 0, WHITE);
-
-                for (int i=0;i<MAX_DEFENCE_SLOTS;i++)
-                {
-                    if (!defenceSlots[i].isAlive)
-                    {
-                        casualLevel = Clamp(casualLevel+0.01f*deltaTime, 0.0f, MAX_CASUAL_LEVEL);
-                        DrawTexturePro(assetTexture, 
-                            (Rectangle){0,0,16,16},
-                            (Rectangle){defenceSlots[i].position.x, defenceSlots[i].position.y, 16.0f, 16.0f}, 
-                            (Vector2){8,15}, 0, WHITE);
-                    }
-                }
-
-                for (int i=0;i<mageAmount;i++)
-                {
-                    const float mageSize = mages[i].isBoss ? 32.0f : 16.0f;
-                    DrawTexturePro(assetTexture, 
-                        (Rectangle){mages[i].animationIndex*16,16,16,16}, 
-                        (Rectangle){mages[i].position.x, mages[i].position.y, mageSize, mageSize}, 
-                        (Vector2){8,mageSize-1}, 0, mages[i].isBoss ? RED : WHITE);
-                }
-
-                for (int i=0;i<bulletAmount;i++)
-                {
-                    DrawLineV(Vector2Subtract(bullets[i].from, (Vector2){0,8}), Vector2Subtract(bullets[i].hit, (Vector2){0,8}), Fade(WHITE, bullets[i].duration));
-                }
-                for (int i=0;i<MAX_DEFENCE_SLOTS;i++)
-                {
-                    if (defenceSlots[i].isAlive)
-                    {
-                        if (i > 1) casualLevel = Clamp(casualLevel-0.06f*deltaTime, 0.0f, MAX_CASUAL_LEVEL);
-                        DrawTexturePro(assetTexture, 
-                            (Rectangle){0,32,16,16},
-                            (Rectangle){defenceSlots[i].position.x, defenceSlots[i].position.y, 16.0f, 16.0f}, 
-                            (Vector2){8,15}, 0, WHITE);
-                        DrawCircleV(defenceSlots[i].position, (float)defenceSlots[i].hitscanSize, Fade(GREEN, 0.1f));
-                    }
-                }
-                DrawText(TextFormat("Coins: %i", coins), 10, 10, 10, GREEN);
-                DrawText(TextFormat("Level: %i", mainLevel), 10, 20, 10, GREEN);
-                DrawText(TextFormat("Health: %3.1f", playerHealth), 10, 30, 10, GREEN);
-                DrawRectangle(200, 10, 99*casualLevel, 20, LIGHTGRAY);
-                if (casualLevel < 0.5f) DrawText("HARD", 250-(MeasureTextEx(GetFontDefault(), "HARD", 20, 0).x*0.5f), 15, 10, BLACK);
-                if (casualLevel >= 0.5f) DrawText("CASUAL", 250-(MeasureTextEx(GetFontDefault(), "CASUAL", 20, 0).x*0.5f), 15, 10, BLACK);
-                DrawRectangleLines(200, 10, 100, 20, BLACK);
-            break;
-            case GameStateGameOver:
-                DrawText("Restart Game", (startGameRec.x+startGameRec.width*0.5f)-MeasureTextEx(GetFontDefault(), "Restart Game", 20, 2).x*0.5f, startGameRec.y+startGameRec.height*0.5f-10.0f, 20, LIGHTGRAY);
-                DrawText("Game Over", 196, SCREEN_HEIGHT*0.5f-10.0f, 20, RED);
-            break;
-            default:
-            break;
-        }
-    EndTextureMode();
-
-    BeginDrawing();
-        ClearBackground(WHITE);
-
-        DrawTexturePro(target.texture, sourceRec, destinationRec, (Vector2){0}, 0.0f, WHITE);
-    EndDrawing();
+    DrawFrame(deltaTime);
     return true;
 }
 
