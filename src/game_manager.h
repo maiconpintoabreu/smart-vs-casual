@@ -21,9 +21,9 @@
 #define DEFAULT_REGEN 0.1f
 #define DEFAULT_ATTACK_CD 1
 #define DEFAULT_ATTACK_DURATION 0.4f
+#define DEFAULT_HEALTH 50.0f 
 
 // Enums
-
 typedef enum GameStateType
 {
     GameStateMainMenu, GameStatePlaying, GameStateGameOver, GameStatePause
@@ -94,7 +94,7 @@ int mainLevel = 1;
 int coins = 100;
 float mageCD = DEFAULT_MAGE_CD;
 float casualLevel = MAX_CASUAL_LEVEL;
-float playerHealth = 50.0f;
+float playerHealth = DEFAULT_HEALTH;
 bool spawnBossFrame = false;
 GameStateType gameState = GameStateMainMenu;
 
@@ -106,6 +106,22 @@ const float initTopLine[] = {30, 40};
 const float initMidLine[] = {113, 123};
 const float initBottomLine[] = {178, 188};
 
+void RestartGame(void)
+{
+    mageAmount = 0;
+    bulletAmount = 0;
+    totalMageSpawned = 0;
+    mainLevel = 1;
+    coins = 100;
+    casualLevel = 1.0f;
+    mageCD = DEFAULT_MAGE_CD;
+    playerHealth = DEFAULT_HEALTH;
+    for (int i=2;i<MAX_DEFENCE_SLOTS;i++)
+    {
+        defenceSlots[i].isAlive = false;
+    }
+
+}
 
 void LoadDefenceSlots(void)
 {
@@ -176,7 +192,7 @@ bool UpdateDrawFrame(void)
     float deltaTime = GetFrameTime();
     if (deltaTime > 1.0f) deltaTime = 0.0f;
 
-    playerHealth = Clamp(playerHealth+DEFAULT_REGEN*deltaTime, 0.0f, 50.0f*mainLevel);
+    playerHealth = Clamp(playerHealth+DEFAULT_REGEN*deltaTime, 0.0f, DEFAULT_HEALTH*mainLevel);
 
     const float scale = MIN((float)GetScreenWidth()/SCREEN_WIDTH, (float)GetScreenHeight()/SCREEN_HEIGHT);
 
@@ -216,14 +232,15 @@ bool UpdateDrawFrame(void)
         {
             ToogleDefenceSlot(virtualMouse);
         }
-        mageCD -= 0.5f/casualLevel*deltaTime;
+        const float mageCDbyCausalLevel = casualLevel > 0.1f ? 1.0f/casualLevel : 11.0f;
+        mageCD -= mageCDbyCausalLevel*deltaTime;
         if (IsAudioDeviceReady())
         {
             if (IsMusicValid(backgroundMusic) && !IsMusicStreamPlaying(backgroundMusic)) PlayMusicStream(backgroundMusic);
             if (IsMusicValid(backgroundMusic)) UpdateMusicStream(backgroundMusic);
         }
         
-        if (mageCD <= 0.0f)
+        if (mageCD <= 0.0f && mageAmount < MAX_MAGES)
         {
             mageCD = DEFAULT_MAGE_CD*(10.0f/mainLevel);
             if (!spawnBossFrame)
@@ -406,6 +423,16 @@ bool UpdateDrawFrame(void)
         }
 
         break;
+        case GameStateGameOver:
+            if (CheckCollisionPointRec(virtualMouse, startGameRec))
+            {
+                if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT))
+                {
+                    RestartGame();
+                    gameState = GameStatePlaying;
+                }
+            }
+        break;
         default:
         break;
     }
@@ -441,10 +468,11 @@ bool UpdateDrawFrame(void)
 
                 for (int i=0;i<mageAmount;i++)
                 {
+                    const float mageSize = mages[i].isBoss ? 32.0f : 16.0f;
                     DrawTexturePro(assetTexture, 
                         (Rectangle){mages[i].animationIndex*16,16,16,16}, 
-                        (Rectangle){mages[i].position.x, mages[i].position.y, 16.0f, 16.0f}, 
-                        (Vector2){8,15}, 0, WHITE);
+                        (Rectangle){mages[i].position.x, mages[i].position.y, mageSize, mageSize}, 
+                        (Vector2){8,mageSize-1}, 0, mages[i].isBoss ? RED : WHITE);
                 }
 
                 for (int i=0;i<bulletAmount;i++)
@@ -472,6 +500,7 @@ bool UpdateDrawFrame(void)
                 DrawRectangleLines(200, 10, 100, 20, BLACK);
             break;
             case GameStateGameOver:
+                DrawText("Restart Game", (startGameRec.x+startGameRec.width*0.5f)-MeasureTextEx(GetFontDefault(), "Restart Game", 20, 2).x*0.5f, startGameRec.y+startGameRec.height*0.5f-10.0f, 20, LIGHTGRAY);
                 DrawText("Game Over", 196, SCREEN_HEIGHT*0.5f-10.0f, 20, RED);
             break;
             default:
