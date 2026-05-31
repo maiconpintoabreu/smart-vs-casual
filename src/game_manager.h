@@ -73,9 +73,10 @@ RenderTexture target = {0};
 static Rectangle sourceRec = {0};
 static Rectangle destinationRec = {0};
 
-// Main Menu
+// UI
 const Rectangle startGameRec = {150, SCREEN_HEIGHT*0.5f-(25.0f+40.0f*0.5f), 200, 40};
 const Rectangle quitGameRec = {150, SCREEN_HEIGHT*0.5f+(25.0f-40.0f*0.5f), 200, 40};
+const Rectangle backRec = {SCREEN_WIDTH - 50.0f, 10.0f, 20.0f, 20.0f};
 
 // Level Design
 Texture2D level = {0};
@@ -258,6 +259,9 @@ void DrawFrame(float deltaTime)
                 DrawText(TextFormat("Coins: %i", coins), 10, 10, 10, BLACK);
                 const char *levelText = TextFormat("Level -> %i", mainLevel);
                 DrawText(levelText, SCREEN_WIDTH*0.5f-(MeasureTextEx(GetFontDefault(), levelText, 10, 1).x*0.5f), 10, 10, BLACK);
+
+                DrawRectangleRoundedLinesEx(backRec, 2, 2, 2, BLACK);
+                DrawText("<", backRec.x+6, backRec.y+1, 20, BLACK);
             break;
             case GameStateGameOver:
                 DrawText("Restart Game", (startGameRec.x+startGameRec.width*0.5f)-MeasureTextEx(GetFontDefault(), "Restart Game", 20, 2).x*0.5f, startGameRec.y+startGameRec.height*0.5f-10.0f, 20, LIGHTGRAY);
@@ -303,6 +307,7 @@ bool UpdateDrawFrame(void)
             {
                 if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT))
                 {
+                    RestartGame();
                     gameState = GameStatePlaying;
                 }
             }
@@ -320,6 +325,15 @@ bool UpdateDrawFrame(void)
         if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT))
         {
             ToogleDefenceSlot(virtualMouse);
+        }
+
+        if (CheckCollisionPointRec(virtualMouse, backRec))
+        {
+            if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT))
+            {
+                gameState = GameStateMainMenu;
+                return true;
+            }
         }
         const float mageCDbyCausalLevel = casualLevel > 0.1f ? 1.0f/casualLevel : 11.0f;
         mageCD -= mageCDbyCausalLevel*deltaTime;
